@@ -127,22 +127,34 @@ def generate():
     ai_response = call_model_api(user_text, language)
     return jsonify({"response": ai_response})
 
-
 def normalize_emotions(emotions_dict):
-    total = sum(emotions_dict.values())
-    if total == 0:
-        # Toplam 0 ise, tüm duyguları 0 bırakabiliriz ya da eşit paylaştırabiliriz.
-        return {k: 0 for k in emotions_dict}
-    normalized = {k: round((v / total) * 100) for k, v in emotions_dict.items()}
+    # 1. Önce değerleri float'a çevir, 0-1 aralığındaysa 0-100'e dönüştür
+    converted = {}
+    for k, v in emotions_dict.items():
+        try:
+            val = float(v)
+            if val <= 1.0:
+                val = val * 100
+            converted[k] = val
+        except Exception:
+            converted[k] = 0
 
-    # Toplam yuvarlama nedeniyle 100 olmayabilir, farkı en büyük değere ekleyelim
+    # 2. Toplamı hesapla
+    total = sum(converted.values())
+    if total == 0:
+        # Toplam 0 ise, tüm duygular 0 olsun
+        return {k: 0 for k in emotions_dict}
+
+    # 3. Oransal olarak 100'e tamamla
+    normalized = {k: round((v / total) * 100) for k, v in converted.items()}
+
+    # 4. Yuvarlama farkını en yüksek değere ekle
     diff = 100 - sum(normalized.values())
     if diff != 0:
         max_key = max(normalized, key=normalized.get)
         normalized[max_key] += diff
 
     return normalized
-
 
 @app.route("/analyze-emotions", methods=["POST"])
 def analyze_emotions():
@@ -176,12 +188,16 @@ def analyze_emotions():
         model_name = TURKCELL_MODEL
         system_prompt = (
             "Sen yapay zekasın ve aşağıdaki metnin duygusal analizini yapacaksın. "
-            "Sadece ve sadece JSON formatında, anahtarlar olarak şunları kullan: sevinç, üzüntü, korku, öfke, tiksinti, şaşkınlık. "
-            "Her değeri 0 ile 100 arasında tamsayı olarak ver. "
-            "Hiçbir ek açıklama veya başka metin yazma.\n\n"
+            "Sadece ve sadece JSON formatında cevap ver. "
+            "Anahtarlar sadece ve sadece şunlar olmalı: sevinç, üzüntü, korku, öfke, tiksinti, şaşkınlık. "
+            "Başka hiç bir anahtar, duygu veya açıklama ekleme. "
+            "Her bir değer 0 ile 100 arasında tamsayı olmalıdır. "
+            "JSON dışında hiçbir şey yazma.\n\n"
             f"Metin: \"{full_text}\"\n\n"
-            "Cevabın sadece JSON formatında olmalıdır:"
+            "Cevabın kesinlikle sadece JSON formatında olmalıdır:"
         )
+
+
 
     else:
         return jsonify({"error": "Desteklenmeyen dil"}), 400
@@ -212,13 +228,20 @@ def analyze_emotions():
 
         # Eğer 'response' alanı varsa, onun içindeki JSON stringini de açıyoruz
         if "response" in emotion_data_raw:
-            try:
-                emotion_data = json.loads(emotion_data_raw["response"])
-            except json.JSONDecodeError:
-                return jsonify({"error": "İç içe JSON ayrıştırma hatası."}), 500
+            response_field = emotion_data_raw["response"]
+            if isinstance(response_field, dict):
+                emotion_data = response_field
+            elif isinstance(response_field, str):
+                try:
+                    emotion_data = json.loads(response_field)
+                except json.JSONDecodeError:
+                    return jsonify({"error": "İç içe JSON ayrıştırma hatası."}), 500
+            else:
+                emotion_data = {}
         else:
             emotion_data = emotion_data_raw
 
+        # Normalize et
         emotion_data = normalize_emotions(emotion_data)
 
         return jsonify({"emotions": emotion_data})
