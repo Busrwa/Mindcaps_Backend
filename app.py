@@ -3,18 +3,20 @@ from flask_cors import CORS
 import requests
 import json
 import re
+import os
 
 app = Flask(__name__)
 CORS(app)
-app.config["DEBUG"] = True
+app.config["DEBUG"] = os.getenv("DEBUG", "False") == "True"
 #ollama run mistral:instruct
 #ollama run refinedneuro/turkcell-llm-7b-v1
+#ollama serve
 
 
-API_URL = "http://localhost:11434/api/generate"
+API_URL = os.getenv("API_URL")
 
-MISTRAL_MODEL = "mistral:instruct"
-TURKCELL_MODEL = "refinedneuro/turkcell-llm-7b-v1"
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL")
+TURKCELL_MODEL = os.getenv("TURKCELL_MODEL")
 
 SYSTEM_PROMPT_EN = (
     "You are an AI-powered psychological support assistant. "
